@@ -1,0 +1,57 @@
+---
+import "../styles/global.css";
+import BusTracker from "../components/BusTracker";
+import TrainTracker from "../components/TrainTracker";
+import NavSpinner from "../components/NavSpinner";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content="Track RapidKL bus and train arrivals in real time" />
+    <title>RapidTracker — RapidKL Bus & Train Tracker</title>
+  </head>
+  <body class="min-h-screen bg-muted">
+
+    <!-- Header -->
+    <header class="bg-surface" style="border-bottom:1px solid var(--c-border);position:sticky;top:0;z-index:40;">
+      <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+        <!-- Logo -->
+        <div class="icon-box bg-p600" style="width:36px;height:36px;border-radius:10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h18M3 6l9-3 9 3M3 18l9 3 9-3"/>
+          </svg>
+        </div>
+        <!-- Title -->
+        <div>
+          <div class="text-hi" style="font-size:0.9375rem;font-weight:700;line-height:1.3;">RapidTracker</div>
+          <div class="text-lo" style="font-size:0.75rem;line-height:1.3;">RapidKL Bus & Train Arrivals</div>
+        </div>
+        <!-- Right: spinner -->
+        <div class="ml-auto flex items-center gap-3">
+          <NavSpinner client:load />
+        </div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="max-w-5xl mx-auto px-4 py-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="card"><BusTracker client:load /></div>
+        <div class="card"><TrainTracker client:load /></div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-5xl mx-auto px-4 py-5 text-center text-lo" style="font-size:0.75rem;">
+      Powered by <a href="https://data.gov.my" target="_blank" rel="noopener" class="underline">Malaysia Open Data</a>
+      &nbsp;·&nbsp; GTFS Realtime every 30s
+      &nbsp;·&nbsp; Built with <a href="https://design.digital.gov.my" target="_blank" rel="noopener" class="underline">MYDS</a>
+    </footer>
+
+  </body>
+</html>
