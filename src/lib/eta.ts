@@ -1,6 +1,7 @@
 import type { GTFSData, Stop } from "./gtfs-static";
 import { timeToMinutes, nowMinutes } from "./gtfs-static";
 import type { VehiclePosition } from "./gtfs-realtime";
+import { LOOKAHEAD_MINUTES, MAX_ARRIVALS } from "./config";
 
 export interface ArrivalEstimate {
   tripId: string;
@@ -20,9 +21,6 @@ export interface StopArrival {
   arrivals: ArrivalEstimate[];
   lastUpdated: Date;
 }
-
-const LOOKAHEAD_MINUTES = 90;
-const MAX_ARRIVALS = 8;
 
 export function getArrivalsForStop(
   stopId: string,

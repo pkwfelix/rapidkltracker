@@ -6,8 +6,8 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "concurrently -n server,astro -c cyan,magenta \"node server/index.js\" \"astro dev\"",
-    "server": "node server/index.js",
+    "dev": "concurrently -n server,astro -c cyan,magenta \"tsx server/index.ts\" \"astro dev\"",
+    "server": "tsx server/index.ts",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
@@ -29,6 +29,8 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "idb": "^8.0.3",
+    "tsx": "^4.21.0"
   }
 }

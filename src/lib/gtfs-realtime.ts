@@ -1,7 +1,6 @@
-// Vehicle positions are now fetched from the local Node server (server/index.js)
-// which polls api.data.gov.my every 30s and caches results as JSON.
-// Server runs on port 3001 alongside Astro on 4321.
-const SERVER_BASE = "http://localhost:3001";
+const SERVER_BASE: string =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.PUBLIC_SERVER_BASE) ||
+  "http://localhost:3001";
 
 export interface VehiclePosition {
   vehicleId: string;
@@ -35,4 +34,34 @@ export async function fetchAllBusPositions(): Promise<VehiclePosition[]> {
 
 export async function fetchAllTrainPositions(): Promise<VehiclePosition[]> {
   return fetchFromServer("train");
+}
+
+/**
+ * Subscribe to server-sent events for a group. The callback is invoked
+ * each time the server writes a new cache entry for that group.
+ * Returns a cleanup function to close the connection.
+ * Falls back to a no-op if EventSource is unavailable.
+ */
+export function subscribeToUpdates(
+  group: "bus" | "train",
+  onUpdate: () => void
+): () => void {
+  if (typeof EventSource === "undefined") return () => {};
+
+  const es = new EventSource(`${SERVER_BASE}/api/events/${group}`);
+
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      // Skip the initial connection ping
+      if (data.connected) return;
+      onUpdate();
+    } catch {}
+  };
+
+  es.onerror = () => {
+    // EventSource auto-reconnects; nothing to do here
+  };
+
+  return () => es.close();
 }

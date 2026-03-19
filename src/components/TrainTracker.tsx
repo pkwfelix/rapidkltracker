@@ -1,123 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { GTFSData } from "../lib/gtfs-static";
-import { loadGTFSStatic } from "../lib/gtfs-static";
 import { fetchAllTrainPositions } from "../lib/gtfs-realtime";
-import type { VehiclePosition } from "../lib/gtfs-realtime";
-import { getArrivalsForStop } from "../lib/eta";
-import type { ArrivalEstimate } from "../lib/eta";
-import type { WatchedStation } from "../types";
+import { useTracker } from "../hooks/useTracker";
 import StationInput from "./StationInput";
 import StationCard from "./StationCard";
 import RefreshSpinner from "./RefreshSpinner";
 
-const STORAGE_KEY = "rapidtracker:train-stations";
-const REFRESH_INTERVAL = 10;
-
 export default function TrainTracker() {
-  const [watchedStations, setWatchedStations] = useState<WatchedStation[]>([]);
-  const [gtfsDatasets, setGtfsDatasets] = useState<GTFSData[]>([]);
-  const [vehiclePositions, setVehiclePositions] = useState<VehiclePosition[]>([]);
-  const [arrivalsMap, setArrivalsMap] = useState<Map<string, ArrivalEstimate[]>>(new Map());
-  const [isStaticLoading, setIsStaticLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [staticError, setStaticError] = useState<string | null>(null);
-  const datasetsRef = useRef<GTFSData[]>([]);
-
-  // Load GTFS static data on mount
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setIsStaticLoading(true);
-      setStaticError(null);
-      try {
-        const [rail, ktmb] = await Promise.allSettled([
-          loadGTFSStatic("prasarana", "rapid-rail-kl"),
-          loadGTFSStatic("ktmb"),
-        ]);
-        if (cancelled) return;
-        const datasets: GTFSData[] = [];
-        if (rail.status === "fulfilled") datasets.push(rail.value);
-        if (ktmb.status === "fulfilled") datasets.push(ktmb.value);
-        if (datasets.length === 0) {
-          setStaticError("Failed to load train schedule data. Check your connection.");
-        }
-        datasetsRef.current = datasets;
-        setGtfsDatasets(datasets);
-      } catch (err) {
-        if (!cancelled) setStaticError("Failed to load train schedule data.");
-      } finally {
-        if (!cancelled) setIsStaticLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Load watched stations from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setWatchedStations(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  // Persist to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(watchedStations));
-    } catch {}
-  }, [watchedStations]);
-
-  // Fetch realtime data and compute arrivals
-  const refresh = useCallback(async () => {
-    if (datasetsRef.current.length === 0) return;
-    setIsRefreshing(true);
-    try {
-      const positions = await fetchAllTrainPositions();
-      setVehiclePositions(positions);
-
-      const map = new Map<string, ArrivalEstimate[]>();
-      const stations = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as WatchedStation[];
-      for (const station of stations) {
-        const arrivals = getArrivalsForStop(station.stop_id, datasetsRef.current, positions);
-        map.set(station.stop_id, arrivals);
-      }
-      setArrivalsMap(map);
-    } catch (err) {
-      console.error("Train refresh error:", err);
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Initial refresh after static data loads
-  useEffect(() => {
-    if (!isStaticLoading && gtfsDatasets.length > 0) {
-      refresh();
-    }
-  }, [isStaticLoading, gtfsDatasets, refresh]);
-
-  // Recompute arrivals when watched stations change
-  useEffect(() => {
-    if (datasetsRef.current.length === 0 || watchedStations.length === 0) return;
-    const map = new Map<string, ArrivalEstimate[]>();
-    for (const station of watchedStations) {
-      const arrivals = getArrivalsForStop(station.stop_id, datasetsRef.current, vehiclePositions);
-      map.set(station.stop_id, arrivals);
-    }
-    setArrivalsMap(map);
-  }, [watchedStations, vehiclePositions]);
-
-  const addStation = (station: WatchedStation) => {
-    setWatchedStations((prev) => {
-      if (prev.some((s) => s.stop_id === station.stop_id)) return prev;
-      return [...prev, station];
-    });
-  };
-
-  const removeStation = (stopId: string) => {
-    setWatchedStations((prev) => prev.filter((s) => s.stop_id !== stopId));
-  };
+  const {
+    watchedStations,
+    gtfsDatasets,
+    arrivalsMap,
+    isStaticLoading,
+    isRefreshing,
+    staticError,
+    refresh,
+    addStation,
+    removeStation,
+    refreshIntervalSeconds,
+  } = useTracker({
+    storageKey: "rapidtracker:train-stations",
+    feeds: [
+      { agency: "prasarana", category: "rapid-rail-kl" },
+      { agency: "ktmb" },
+    ],
+    fetchPositions: fetchAllTrainPositions,
+    errorMessage: "Failed to load train schedule data. Check your connection.",
+    sseGroup: "train",
+  });
 
   return (
     <div>
@@ -131,7 +39,7 @@ export default function TrainTracker() {
           <div className="text-sm font-semibold text-hi">Train Stations</div>
           <div className="text-xs text-lo">RapidKL Rail & KTMB</div>
         </div>
-        <RefreshSpinner intervalSeconds={REFRESH_INTERVAL} onRefresh={refresh} isLoading={isRefreshing} />
+        <RefreshSpinner intervalSeconds={refreshIntervalSeconds} onRefresh={refresh} isLoading={isRefreshing} />
       </div>
 
       <div className="card-body">

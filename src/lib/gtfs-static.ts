@@ -43,7 +43,60 @@ export interface GTFSData {
   agency: string;
 }
 
-const cache = new Map<string, GTFSData>();
+// In-memory cache for the current session (survives hot-reloads in dev)
+const memoryCache = new Map<string, GTFSData>();
+
+// Serialise/deserialise GTFSData for sessionStorage (Maps → arrays)
+function serialise(data: GTFSData): string {
+  return JSON.stringify({
+    stops:            Array.from(data.stops.entries()),
+    stopTimes:        data.stopTimes,
+    trips:            Array.from(data.trips.entries()),
+    routes:           Array.from(data.routes.entries()),
+    stopsByName:      Array.from(data.stopsByName.entries()),
+    tripsByStop:      Array.from(data.tripsByStop.entries()),
+    tripStopTimesMap: Array.from(data.tripStopTimesMap.entries()),
+    agency:           data.agency,
+  });
+}
+
+function deserialise(raw: string): GTFSData {
+  const obj = JSON.parse(raw);
+  return {
+    stops:            new Map(obj.stops),
+    stopTimes:        obj.stopTimes,
+    trips:            new Map(obj.trips),
+    routes:           new Map(obj.routes),
+    stopsByName:      new Map(obj.stopsByName),
+    tripsByStop:      new Map(obj.tripsByStop),
+    tripStopTimesMap: new Map(obj.tripStopTimesMap),
+    agency:           obj.agency,
+  };
+}
+
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function sessionGet(key: string): GTFSData | null {
+  try {
+    const meta = sessionStorage.getItem(`gtfs:${key}:ts`);
+    if (!meta) return null;
+    if (Date.now() - Number(meta) > SESSION_TTL_MS) return null;
+    const raw = sessionStorage.getItem(`gtfs:${key}`);
+    if (!raw) return null;
+    return deserialise(raw);
+  } catch {
+    return null;
+  }
+}
+
+function sessionSet(key: string, data: GTFSData): void {
+  try {
+    sessionStorage.setItem(`gtfs:${key}`, serialise(data));
+    sessionStorage.setItem(`gtfs:${key}:ts`, String(Date.now()));
+  } catch {
+    // sessionStorage quota exceeded — silently skip
+  }
+}
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.replace(/\r/g, "").split("\n").filter(Boolean);
@@ -274,14 +327,25 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
 
 export async function loadGTFSStatic(agency: string, category?: string): Promise<GTFSData> {
   const key = category ? `${agency}:${category}` : agency;
-  if (cache.has(key)) return cache.get(key)!;
 
+  // 1. In-memory cache (fastest — survives within the same page lifecycle)
+  if (memoryCache.has(key)) return memoryCache.get(key)!;
+
+  // 2. sessionStorage cache (persists across page reloads within the browser tab, 6h TTL)
+  const cached = sessionGet(key);
+  if (cached) {
+    memoryCache.set(key, cached);
+    return cached;
+  }
+
+  // 3. Network fetch + parse
   const url = category
     ? `https://api.data.gov.my/gtfs-static/${agency}?category=${category}`
     : `https://api.data.gov.my/gtfs-static/${agency}`;
 
   const data = await fetchAndParse(url, key);
-  cache.set(key, data);
+  memoryCache.set(key, data);
+  sessionSet(key, data);
   return data;
 }
 
