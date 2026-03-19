@@ -174,10 +174,6 @@ GTFS Static ZIPs are fetched directly in the browser from `api.data.gov.my` on f
 - GTFS Static data is re-fetched on every page reload (no persistent cache beyond `localStorage` stop list)
 - `SERVER_BASE` is hardcoded to `http://localhost:3001` — needs an environment variable for production deployment
 
-## Refactoring Roadmap
-
-See [`REFACTORING.md`](./REFACTORING.md) for the full plan.
-
 ## License
 
 MIT
