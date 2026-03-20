@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { openDB } from "idb";
 
 export interface Stop {
   stop_id: string;
@@ -46,55 +47,76 @@ export interface GTFSData {
 // In-memory cache for the current session (survives hot-reloads in dev)
 const memoryCache = new Map<string, GTFSData>();
 
-// Serialise/deserialise GTFSData for sessionStorage (Maps → arrays)
-function serialise(data: GTFSData): string {
-  return JSON.stringify({
-    stops:            Array.from(data.stops.entries()),
-    stopTimes:        data.stopTimes,
-    trips:            Array.from(data.trips.entries()),
-    routes:           Array.from(data.routes.entries()),
-    stopsByName:      Array.from(data.stopsByName.entries()),
-    tripsByStop:      Array.from(data.tripsByStop.entries()),
-    tripStopTimesMap: Array.from(data.tripStopTimesMap.entries()),
-    agency:           data.agency,
-  });
-}
-
-function deserialise(raw: string): GTFSData {
-  const obj = JSON.parse(raw);
-  return {
-    stops:            new Map(obj.stops),
-    stopTimes:        obj.stopTimes,
-    trips:            new Map(obj.trips),
-    routes:           new Map(obj.routes),
-    stopsByName:      new Map(obj.stopsByName),
-    tripsByStop:      new Map(obj.tripsByStop),
-    tripStopTimesMap: new Map(obj.tripStopTimesMap),
-    agency:           obj.agency,
-  };
-}
+// ── IndexedDB cache (L2) ──────────────────────────────────────────────────────
 
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-function sessionGet(key: string): GTFSData | null {
+interface GTFSCacheEntry {
+  key: string;
+  data: {
+    stops: [string, Stop][];
+    stopTimes: StopTime[];
+    trips: [string, Trip][];
+    routes: [string, Route][];
+    stopsByName: [string, Stop[]][];
+    tripsByStop: [string, StopTime[]][];
+    tripStopTimesMap: [string, StopTime[]][];
+    agency: string;
+  };
+  timestamp: number;
+}
+
+function openGTFSDB() {
+  return openDB("rapidtracker-gtfs", 1, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains("gtfs-cache")) {
+        db.createObjectStore("gtfs-cache", { keyPath: "key" });
+      }
+    },
+  });
+}
+
+async function idbGet(key: string): Promise<GTFSData | null> {
   try {
-    const meta = sessionStorage.getItem(`gtfs:${key}:ts`);
-    if (!meta) return null;
-    if (Date.now() - Number(meta) > SESSION_TTL_MS) return null;
-    const raw = sessionStorage.getItem(`gtfs:${key}`);
-    if (!raw) return null;
-    return deserialise(raw);
+    const db = await openGTFSDB();
+    const entry: GTFSCacheEntry | undefined = await db.get("gtfs-cache", key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > SESSION_TTL_MS) return null;
+    return {
+      stops:            new Map(entry.data.stops),
+      stopTimes:        entry.data.stopTimes,
+      trips:            new Map(entry.data.trips),
+      routes:           new Map(entry.data.routes),
+      stopsByName:      new Map(entry.data.stopsByName),
+      tripsByStop:      new Map(entry.data.tripsByStop),
+      tripStopTimesMap: new Map(entry.data.tripStopTimesMap),
+      agency:           entry.data.agency,
+    };
   } catch {
     return null;
   }
 }
 
-function sessionSet(key: string, data: GTFSData): void {
+async function idbSet(key: string, data: GTFSData): Promise<void> {
   try {
-    sessionStorage.setItem(`gtfs:${key}`, serialise(data));
-    sessionStorage.setItem(`gtfs:${key}:ts`, String(Date.now()));
-  } catch {
-    // sessionStorage quota exceeded — silently skip
+    const db = await openGTFSDB();
+    const entry: GTFSCacheEntry = {
+      key,
+      data: {
+        stops:            Array.from(data.stops.entries()),
+        stopTimes:        data.stopTimes,
+        trips:            Array.from(data.trips.entries()),
+        routes:           Array.from(data.routes.entries()),
+        stopsByName:      Array.from(data.stopsByName.entries()),
+        tripsByStop:      Array.from(data.tripsByStop.entries()),
+        tripStopTimesMap: Array.from(data.tripStopTimesMap.entries()),
+        agency:           data.agency,
+      },
+      timestamp: Date.now(),
+    };
+    await db.put("gtfs-cache", entry);
+  } catch (err) {
+    console.warn("[gtfs-static] IndexedDB write failed:", err);
   }
 }
 
@@ -340,8 +362,8 @@ export async function loadGTFSStatic(agency: string, category?: string): Promise
   // 1. In-memory cache (fastest — survives within the same page lifecycle)
   if (memoryCache.has(key)) return memoryCache.get(key)!;
 
-  // 2. sessionStorage cache (persists across page reloads within the browser tab, 6h TTL)
-  const cached = sessionGet(key);
+  // 2. IndexedDB cache (persists across page reloads, 6h TTL)
+  const cached = await idbGet(key);
   if (cached) {
     memoryCache.set(key, cached);
     return cached;
@@ -354,7 +376,7 @@ export async function loadGTFSStatic(agency: string, category?: string): Promise
 
   const data = await fetchAndParse(url, key);
   memoryCache.set(key, data);
-  sessionSet(key, data);
+  idbSet(key, data).catch(() => {}); // fire-and-forget
   return data;
 }
 
