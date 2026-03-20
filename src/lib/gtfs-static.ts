@@ -141,7 +141,7 @@ function addSeconds(time: string, secs: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function getTodayActiveServiceIds(calendarText: string): Set<string> {
+export function getTodayActiveServiceIds(calendarText: string, calendarDatesText = ""): Set<string> {
   const active = new Set<string>();
   if (!calendarText) return active;
 
@@ -162,6 +162,14 @@ function getTodayActiveServiceIds(calendarText: string): Set<string> {
     active.add(row.service_id);
   });
 
+  if (calendarDatesText) {
+    parseCSV(calendarDatesText).forEach((row) => {
+      if (!row.service_id || row.date !== todayStr) return;
+      if (row.exception_type === "1") active.add(row.service_id);
+      else if (row.exception_type === "2") active.delete(row.service_id);
+    });
+  }
+
   return active;
 }
 
@@ -177,13 +185,14 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
     return await file.async("string");
   };
 
-  const [stopsText, stopTimesText, tripsText, routesText, freqText, calendarText] = await Promise.all([
+  const [stopsText, stopTimesText, tripsText, routesText, freqText, calendarText, calendarDatesText] = await Promise.all([
     readFile("stops.txt"),
     readFile("stop_times.txt"),
     readFile("trips.txt"),
     readFile("routes.txt"),
     readFile("frequencies.txt"),
     readFile("calendar.txt"),
+    readFile("calendar_dates.txt"),
   ]);
 
   const stops = new Map<string, Stop>();
@@ -244,7 +253,7 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
 
   // Expand frequencies.txt into concrete trip instances
   const stopTimes: StopTime[] = [];
-  const todayServiceIds = getTodayActiveServiceIds(calendarText);
+  const todayServiceIds = getTodayActiveServiceIds(calendarText, calendarDatesText);
 
   if (freqText) {
     const freqRows = parseCSV(freqText);
