@@ -1,26 +1,23 @@
 import { useState, useEffect } from "react";
+import { REFRESH_INTERVAL_SECONDS } from "../lib/config";
 
 export default function NavSpinner() {
   const [refreshing, setRefreshing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [totalSeconds, setTotalSeconds] = useState<number | null>(null);
+  const [totalSeconds] = useState(REFRESH_INTERVAL_SECONDS);
 
   useEffect(() => {
     const onTick = (e: Event) => {
       const ev = e as CustomEvent<{ secondsLeft: number; refreshing: boolean }>;
       setSecondsLeft(ev.detail.secondsLeft);
       setRefreshing(ev.detail.refreshing);
-      // Capture the total interval on first tick
-      if (totalSeconds === null) {
-        setTotalSeconds(ev.detail.secondsLeft);
-      }
     };
     window.addEventListener("rapidtracker:tick", onTick);
     return () => window.removeEventListener("rapidtracker:tick", onTick);
-  }, [totalSeconds]);
+  }, []);
 
   // Calculate progress for the circular ring
-  const progress = totalSeconds && secondsLeft !== null ? (totalSeconds - secondsLeft) / totalSeconds : 0;
+  const progress = secondsLeft !== null ? (REFRESH_INTERVAL_SECONDS - secondsLeft) / REFRESH_INTERVAL_SECONDS : 0;
   const circumference = 2 * Math.PI * 5.5; // radius = 5.5
   const strokeDasharray = circumference;
   const strokeDashoffset = circumference * (1 - progress);
@@ -59,9 +56,9 @@ export default function NavSpinner() {
           fill="none"
           strokeLinecap="round"
           transform="rotate(-90 7 7)"
+          strokeDasharray={strokeDasharray}
+          strokeDashoffset={strokeDashoffset}
           style={{
-            strokeDasharray,
-            strokeDashoffset,
             transition: refreshing ? "none" : "stroke-dashoffset 1s linear",
           }}
         />
