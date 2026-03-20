@@ -78,7 +78,7 @@ describe("Bug 1 — overnight ETA skipping", () => {
 
   it("includes a trip with arrival 24:45 when clock is 00:30 (diffMins should be 15)", () => {
     const dataset = makeGTFSData("24:45:00"); // arrivalMins=1485, now=30 → diffMins=1455 on unfixed; normNow=1470 → diffMins=15 on fixed
-    const results = getArrivalsForStop("S1", [dataset as any], []);
+    const results = getArrivalsForStop("S1", [dataset as any], new Map());
     expect(results.length).toBe(1);
     expect(results[0].estimatedMinutes).toBeLessThanOrEqual(90);
   });
@@ -152,7 +152,7 @@ describe("Bug 4 — arrivals computed from state, not localStorage", () => {
     const dataset = makeGTFSData("09:00:00");
     // The fix is in useTracker, but we verify the underlying function works
     // independently of localStorage — it should always return arrivals for valid data
-    const results = getArrivalsForStop("S1", [dataset as any], []);
+    const results = getArrivalsForStop("S1", [dataset as any], new Map());
     expect(results.length).toBeGreaterThan(0);
   });
 });

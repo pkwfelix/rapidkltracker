@@ -104,9 +104,13 @@ export function useTracker(config: TrackerConfig): TrackerState {
       const positions = await fetchPositions();
       setVehiclePositions(positions);
       const stations = watchedStationsRef.current;
+      const activeVehicles = new Map<string, VehiclePosition>();
+      for (const vp of positions) {
+        if (vp.tripId) activeVehicles.set(vp.tripId, vp);
+      }
       const map = new Map<string, ArrivalEstimate[]>();
       for (const station of stations) {
-        map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, positions));
+        map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, activeVehicles));
       }
       setArrivalsMap(map);
     } catch (err) {
@@ -130,9 +134,13 @@ export function useTracker(config: TrackerConfig): TrackerState {
   // Recompute arrivals when watched stations change
   useEffect(() => {
     if (datasetsRef.current.length === 0 || watchedStations.length === 0) return;
+    const activeVehicles = new Map<string, VehiclePosition>();
+    for (const vp of vehiclePositions) {
+      if (vp.tripId) activeVehicles.set(vp.tripId, vp);
+    }
     const map = new Map<string, ArrivalEstimate[]>();
     for (const station of watchedStations) {
-      map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, vehiclePositions));
+      map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, activeVehicles));
     }
     setArrivalsMap(map);
   }, [watchedStations, vehiclePositions]);

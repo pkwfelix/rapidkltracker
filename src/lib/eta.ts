@@ -25,21 +25,13 @@ export interface StopArrival {
 export function getArrivalsForStop(
   stopId: string,
   gtfsDatasets: GTFSData[],
-  vehiclePositions: VehiclePosition[]
+  activeVehicles: Map<string, VehiclePosition>
 ): ArrivalEstimate[] {
   const now = nowMinutes();
   // Normalise for overnight GTFS times (24:xx–27:xx): if clock is 00:00–03:59,
   // treat it as 24:xx–27:xx so diffMins stays small and positive.
   const normNow = now < 240 ? now + 1440 : now;
   const arrivals: ArrivalEstimate[] = [];
-
-  // Build a map of tripId -> active vehicle
-  const activeVehicles = new Map<string, VehiclePosition>();
-  for (const vp of vehiclePositions) {
-    if (vp.tripId) {
-      activeVehicles.set(vp.tripId, vp);
-    }
-  }
 
   for (const dataset of gtfsDatasets) {
     const stopTimes = dataset.tripsByStop.get(stopId);
