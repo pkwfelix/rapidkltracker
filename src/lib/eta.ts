@@ -28,6 +28,9 @@ export function getArrivalsForStop(
   vehiclePositions: VehiclePosition[]
 ): ArrivalEstimate[] {
   const now = nowMinutes();
+  // Normalise for overnight GTFS times (24:xx–27:xx): if clock is 00:00–03:59,
+  // treat it as 24:xx–27:xx so diffMins stays small and positive.
+  const normNow = now < 240 ? now + 1440 : now;
   const arrivals: ArrivalEstimate[] = [];
 
   // Build a map of tripId -> active vehicle
@@ -48,7 +51,7 @@ export function getArrivalsForStop(
 
       // Only show upcoming arrivals within the lookahead window
       // Handle overnight times (e.g. 25:30 = 1:30am next day)
-      let diffMins = arrivalMins - now;
+      let diffMins = arrivalMins - normNow;
       if (diffMins < -5) {
         // If negative by small margin, skip
         continue;
