@@ -56,20 +56,37 @@ export function subscribeToUpdates(
 ): () => void {
   if (typeof EventSource === "undefined") return () => {};
 
-  const es = new EventSource(`${SERVER_BASE}/api/events/${group}`);
+  let delay = 1000;
+  let cancelled = false;
+  let es: EventSource | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  es.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      // Skip the initial connection ping
-      if (data.connected) return;
-      onUpdate();
-    } catch {}
+  function connect() {
+    if (cancelled) return;
+    es = new EventSource(`${SERVER_BASE}/api/events/${group}`);
+
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.connected) return;
+        delay = 1000; // reset backoff on successful message
+        onUpdate();
+      } catch {}
+    };
+
+    es.onerror = () => {
+      es?.close();
+      es = null;
+      retryTimer = setTimeout(connect, delay);
+      delay = Math.min(delay * 2, 30_000);
+    };
+  }
+
+  connect();
+
+  return () => {
+    cancelled = true;
+    if (retryTimer !== null) clearTimeout(retryTimer);
+    es?.close();
   };
-
-  es.onerror = () => {
-    // EventSource auto-reconnects; nothing to do here
-  };
-
-  return () => es.close();
 }
