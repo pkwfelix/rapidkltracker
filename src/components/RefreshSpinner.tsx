@@ -13,13 +13,14 @@ export default function RefreshSpinner({
 }: RefreshSpinnerProps) {
   const [secondsLeft, setSecondsLeft] = useState(intervalSeconds);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shouldRefreshRef = useRef(false);
 
   useEffect(() => {
     setSecondsLeft(intervalSeconds);
     timerRef.current = setInterval(() => {
       setSecondsLeft((prev: number) => {
         if (prev <= 1) {
-          onRefresh();
+          shouldRefreshRef.current = true;
           return intervalSeconds;
         }
         return prev - 1;
@@ -29,6 +30,13 @@ export default function RefreshSpinner({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [intervalSeconds, onRefresh]);
+
+  useEffect(() => {
+    if (shouldRefreshRef.current) {
+      shouldRefreshRef.current = false;
+      onRefresh();
+    }
+  }, [secondsLeft, onRefresh]);
 
   // Emit rapidtracker:tick events so NavSpinner can display the countdown
   useEffect(() => {
