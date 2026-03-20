@@ -38,6 +38,7 @@ export function useTracker(config: TrackerConfig): TrackerState {
   const { storageKey, feeds, fetchPositions, errorMessage, sseGroup } = config;
 
   const [watchedStations, setWatchedStations] = useState<WatchedStation[]>([]);
+  const watchedStationsRef = useRef<WatchedStation[]>([]);
   const [gtfsDatasets, setGtfsDatasets] = useState<GTFSData[]>([]);
   const [vehiclePositions, setVehiclePositions] = useState<VehiclePosition[]>([]);
   const [arrivalsMap, setArrivalsMap] = useState<Map<string, ArrivalEstimate[]>>(new Map());
@@ -45,6 +46,11 @@ export function useTracker(config: TrackerConfig): TrackerState {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [staticError, setStaticError] = useState<string | null>(null);
   const datasetsRef = useRef<GTFSData[]>([]);
+
+  // Keep watchedStationsRef in sync with state
+  useEffect(() => {
+    watchedStationsRef.current = watchedStations;
+  }, [watchedStations]);
 
   // Load GTFS static data on mount
   useEffect(() => {
@@ -97,7 +103,7 @@ export function useTracker(config: TrackerConfig): TrackerState {
     try {
       const positions = await fetchPositions();
       setVehiclePositions(positions);
-      const stations = JSON.parse(localStorage.getItem(storageKey) || "[]") as WatchedStation[];
+      const stations = watchedStationsRef.current;
       const map = new Map<string, ArrivalEstimate[]>();
       for (const station of stations) {
         map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, positions));
@@ -108,7 +114,7 @@ export function useTracker(config: TrackerConfig): TrackerState {
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchPositions, storageKey]);
+  }, [fetchPositions]);
 
   // Initial refresh after static data loads
   useEffect(() => {
