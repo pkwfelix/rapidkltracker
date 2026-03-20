@@ -29,10 +29,13 @@ export default function StationInput({
       setOpen(false);
       return;
     }
-    const results = searchStops(gtfsDatasets, query);
-    setSuggestions(results);
-    setOpen(results.length > 0);
-    setHighlighted(-1);
+    const timer = setTimeout(() => {
+      const results = searchStops(gtfsDatasets, query);
+      setSuggestions(results);
+      setOpen(results.length > 0);
+      setHighlighted(-1);
+    }, 150);
+    return () => clearTimeout(timer);
   }, [query, gtfsDatasets, isLoading]);
 
   const handleSelect = (stop: Stop) => {
