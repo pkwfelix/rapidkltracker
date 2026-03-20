@@ -1,6 +1,14 @@
-const SERVER_BASE: string =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.PUBLIC_SERVER_BASE) ||
-  "http://localhost:3001";
+const _envBase = typeof import.meta !== "undefined"
+  ? (import.meta as any).env?.PUBLIC_SERVER_BASE
+  : undefined;
+if (!_envBase) {
+  console.warn(
+    "[gtfs-realtime] PUBLIC_SERVER_BASE is not set. " +
+    "Falling back to http://localhost:3001. " +
+    "Set this variable for production deployments."
+  );
+}
+const SERVER_BASE: string = _envBase ?? "http://localhost:3001";
 
 export interface VehiclePosition {
   vehicleId: string;
