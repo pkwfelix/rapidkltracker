@@ -25,7 +25,7 @@ export interface StopArrival {
 export function getArrivalsForStop(
   stopId: string,
   gtfsDatasets: GTFSData[],
-  activeVehicles: Map<string, VehiclePosition>
+  activeVehicles: Map<string, VehiclePosition>,
 ): ArrivalEstimate[] {
   const now = nowMinutes();
   // Normalise for overnight GTFS times (24:xx–27:xx): if clock is 00:00–03:59,
@@ -68,25 +68,36 @@ export function getArrivalsForStop(
       if (activeVehicle) {
         // Vehicle is active: estimate remaining time to this stop
         const vehicleSequence = activeVehicle.currentStopSequence;
-        if (vehicleSequence !== undefined && vehicleSequence < st.stop_sequence) {
+        if (
+          vehicleSequence !== undefined &&
+          vehicleSequence < st.stop_sequence
+        ) {
           // Vehicle hasn't reached this stop yet — use schedule time adjusted by vehicle progress
           const tripStops = dataset.tripStopTimesMap.get(st.trip_id) ?? [];
           const vehicleCurrentSt = tripStops.find(
-            (ts) => ts.stop_sequence === vehicleSequence
+            (ts) => ts.stop_sequence === vehicleSequence,
           );
           if (vehicleCurrentSt) {
-            const vehicleTimeMins = timeToMinutes(vehicleCurrentSt.departure_time);
+            const vehicleTimeMins = timeToMinutes(
+              vehicleCurrentSt.departure_time,
+            );
             if (!isNaN(vehicleTimeMins)) {
               // Time from vehicle's current position to our stop (schedule-based)
               const remainingBySchedule = arrivalMins - vehicleTimeMins;
               // Current clock time difference from vehicle's scheduled position
-              const vehicleDelay = now - vehicleTimeMins;
+              const vehicleDelay = normNow - vehicleTimeMins;
               // Estimate: remaining schedule time adjusted for current delay
-              estimatedMinutes = Math.max(0, Math.round(remainingBySchedule - vehicleDelay));
+              estimatedMinutes = Math.max(
+                0,
+                Math.round(remainingBySchedule - vehicleDelay),
+              );
               isRealtime = true;
             }
           }
-        } else if (vehicleSequence !== undefined && vehicleSequence >= st.stop_sequence) {
+        } else if (
+          vehicleSequence !== undefined &&
+          vehicleSequence >= st.stop_sequence
+        ) {
           // Vehicle has already passed this stop — skip
           continue;
         }

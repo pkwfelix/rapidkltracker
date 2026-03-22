@@ -1,14 +1,8 @@
-export interface VehiclePosition {
-  vehicleId: string;
-  tripId: string;
-  routeId: string;
-  latitude: number;
-  longitude: number;
-  currentStopSequence?: number;
-  currentStopId?: string;
-  timestamp?: number;
-  agency: string;
-}
+import type { VehiclePosition } from "../shared/types.js";
+
+// VehiclePosition is the single source of truth in shared/types.ts so the
+// server and client never drift out of sync.
+export type { VehiclePosition };
 
 export interface CachePayload {
   updatedAt: number;

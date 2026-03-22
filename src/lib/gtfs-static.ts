@@ -81,16 +81,20 @@ async function idbGet(key: string): Promise<GTFSData | null> {
     const db = await openGTFSDB();
     const entry: GTFSCacheEntry | undefined = await db.get("gtfs-cache", key);
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > SESSION_TTL_MS) return null;
+    if (Date.now() - entry.timestamp > SESSION_TTL_MS) {
+      // Delete the stale entry rather than leaving orphaned data in storage (OPT-2)
+      db.delete("gtfs-cache", key).catch(() => {});
+      return null;
+    }
     return {
-      stops:            new Map(entry.data.stops),
-      stopTimes:        entry.data.stopTimes,
-      trips:            new Map(entry.data.trips),
-      routes:           new Map(entry.data.routes),
-      stopsByName:      new Map(entry.data.stopsByName),
-      tripsByStop:      new Map(entry.data.tripsByStop),
+      stops: new Map(entry.data.stops),
+      stopTimes: entry.data.stopTimes,
+      trips: new Map(entry.data.trips),
+      routes: new Map(entry.data.routes),
+      stopsByName: new Map(entry.data.stopsByName),
+      tripsByStop: new Map(entry.data.tripsByStop),
       tripStopTimesMap: new Map(entry.data.tripStopTimesMap),
-      agency:           entry.data.agency,
+      agency: entry.data.agency,
     };
   } catch {
     return null;
@@ -103,14 +107,14 @@ async function idbSet(key: string, data: GTFSData): Promise<void> {
     const entry: GTFSCacheEntry = {
       key,
       data: {
-        stops:            Array.from(data.stops.entries()),
-        stopTimes:        data.stopTimes,
-        trips:            Array.from(data.trips.entries()),
-        routes:           Array.from(data.routes.entries()),
-        stopsByName:      Array.from(data.stopsByName.entries()),
-        tripsByStop:      Array.from(data.tripsByStop.entries()),
+        stops: Array.from(data.stops.entries()),
+        stopTimes: data.stopTimes,
+        trips: Array.from(data.trips.entries()),
+        routes: Array.from(data.routes.entries()),
+        stopsByName: Array.from(data.stopsByName.entries()),
+        tripsByStop: Array.from(data.tripsByStop.entries()),
         tripStopTimesMap: Array.from(data.tripStopTimesMap.entries()),
-        agency:           data.agency,
+        agency: data.agency,
       },
       timestamp: Date.now(),
     };
@@ -120,10 +124,29 @@ async function idbSet(key: string, data: GTFSData): Promise<void> {
   }
 }
 
+// Purge all IDB entries that have exceeded the session TTL.
+// Called once per session from loadGTFSStatic to reclaim storage from stale data.
+async function pruneStaleIDBEntries(): Promise<void> {
+  try {
+    const db = await openGTFSDB();
+    const all: GTFSCacheEntry[] = await db.getAll("gtfs-cache");
+    const now = Date.now();
+    await Promise.all(
+      all
+        .filter((e) => now - e.timestamp > SESSION_TTL_MS)
+        .map((e) => db.delete("gtfs-cache", e.key)),
+    );
+  } catch {
+    // Non-fatal housekeeping failure — swallow silently
+  }
+}
+
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.replace(/\r/g, "").split("\n").filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const headers = lines[0]
+    .split(",")
+    .map((h) => h.trim().replace(/^"|"$/g, ""));
   return lines.slice(1).map((line) => {
     const values = splitCSVLine(line);
     const obj: Record<string, string> = {};
@@ -136,20 +159,29 @@ function parseCSV(text: string): Record<string, string>[] {
 
 function splitCSVLine(line: string): string[] {
   const result: string[] = [];
-  let current = "";
+  // OPT-1: accumulate characters in an array and join at field boundaries.
+  // The old `current += ch` pattern allocated a new string object on every
+  // character, making the overall parse O(n²) for large fields.
+  const chars: string[] = [];
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped double-quote inside a quoted field ("" → ")
+        chars.push('"');
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
+      result.push(chars.join(""));
+      chars.length = 0;
     } else {
-      current += ch;
+      chars.push(ch);
     }
   }
-  result.push(current);
+  result.push(chars.join(""));
   return result;
 }
 
@@ -163,13 +195,24 @@ function addSeconds(time: string, secs: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export function getTodayActiveServiceIds(calendarText: string, calendarDatesText = ""): Set<string> {
+export function getTodayActiveServiceIds(
+  calendarText: string,
+  calendarDatesText = "",
+): Set<string> {
   const active = new Set<string>();
   if (!calendarText) return active;
 
   const now = new Date();
   const dayIndex = now.getDay(); // 0=Sun,1=Mon,...,6=Sat
-  const dayFields = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayFields = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+  ];
   const todayField = dayFields[dayIndex];
 
   // YYYYMMDD format for date range check
@@ -207,7 +250,15 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
     return await file.async("string");
   };
 
-  const [stopsText, stopTimesText, tripsText, routesText, freqText, calendarText, calendarDatesText] = await Promise.all([
+  const [
+    stopsText,
+    stopTimesText,
+    tripsText,
+    routesText,
+    freqText,
+    calendarText,
+    calendarDatesText,
+  ] = await Promise.all([
     readFile("stops.txt"),
     readFile("stop_times.txt"),
     readFile("trips.txt"),
@@ -271,15 +322,23 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
       baseStopTimes.get(row.trip_id)!.push(st);
     }
   });
-  baseStopTimes.forEach((times) => times.sort((a, b) => a.stop_sequence - b.stop_sequence));
+  baseStopTimes.forEach((times) =>
+    times.sort((a, b) => a.stop_sequence - b.stop_sequence),
+  );
 
   // Expand frequencies.txt into concrete trip instances
   const stopTimes: StopTime[] = [];
-  const todayServiceIds = getTodayActiveServiceIds(calendarText, calendarDatesText);
+  const todayServiceIds = getTodayActiveServiceIds(
+    calendarText,
+    calendarDatesText,
+  );
 
   if (freqText) {
     const freqRows = parseCSV(freqText);
-    const freqByTrip = new Map<string, { start: string; end: string; headway: number }[]>();
+    const freqByTrip = new Map<
+      string,
+      { start: string; end: string; headway: number }[]
+    >();
     freqRows.forEach((row) => {
       if (!row.trip_id) return;
       if (!freqByTrip.has(row.trip_id)) freqByTrip.set(row.trip_id, []);
@@ -294,7 +353,8 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
       const trip = trips.get(baseTripId);
       if (!trip) return;
       // Only expand trips relevant to today's service
-      if (todayServiceIds.size > 0 && !todayServiceIds.has(trip.service_id)) return;
+      if (todayServiceIds.size > 0 && !todayServiceIds.has(trip.service_id))
+        return;
 
       const basePattern = baseStopTimes.get(baseTripId);
       if (!basePattern || basePattern.length === 0) return;
@@ -306,7 +366,11 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
         const endMins = timeToMinutes(freq.end);
         const headwayMins = freq.headway / 60;
 
-        for (let depMins = startMins; depMins < endMins; depMins += headwayMins) {
+        for (
+          let depMins = startMins;
+          depMins < endMins;
+          depMins += headwayMins
+        ) {
           const offsetSecs = Math.round((depMins - baseFirstDep) * 60);
           const synthTripId = `${baseTripId}@${Math.round(depMins)}`;
 
@@ -351,13 +415,35 @@ async function fetchAndParse(url: string, agency: string): Promise<GTFSData> {
     if (!tripStopTimesMap.has(st.trip_id)) tripStopTimesMap.set(st.trip_id, []);
     tripStopTimesMap.get(st.trip_id)!.push(st);
   });
-  tripStopTimesMap.forEach((times) => times.sort((a, b) => a.stop_sequence - b.stop_sequence));
+  tripStopTimesMap.forEach((times) =>
+    times.sort((a, b) => a.stop_sequence - b.stop_sequence),
+  );
 
-  return { stops, stopTimes, trips, routes, stopsByName, tripsByStop, tripStopTimesMap, agency };
+  return {
+    stops,
+    stopTimes,
+    trips,
+    routes,
+    stopsByName,
+    tripsByStop,
+    tripStopTimesMap,
+    agency,
+  };
 }
 
-export async function loadGTFSStatic(agency: string, category?: string): Promise<GTFSData> {
+let idbPruned = false;
+
+export async function loadGTFSStatic(
+  agency: string,
+  category?: string,
+): Promise<GTFSData> {
   const key = category ? `${agency}:${category}` : agency;
+
+  // Run once-per-session IDB housekeeping to reclaim storage from stale entries (OPT-2)
+  if (!idbPruned) {
+    idbPruned = true;
+    pruneStaleIDBEntries(); // fire-and-forget
+  }
 
   // 1. In-memory cache (fastest — survives within the same page lifecycle)
   if (memoryCache.has(key)) return memoryCache.get(key)!;
@@ -376,7 +462,7 @@ export async function loadGTFSStatic(agency: string, category?: string): Promise
 
   const data = await fetchAndParse(url, key);
   memoryCache.set(key, data);
-  idbSet(key, data).catch(() => {}); // fire-and-forget
+  idbSet(key, data); // fire-and-forget; errors are logged internally by idbSet (OPT-4)
   return data;
 }
 
@@ -387,14 +473,23 @@ export function searchStops(data: GTFSData[], query: string): Stop[] {
   const seen = new Set<string>();
 
   for (const d of data) {
-    d.stops.forEach((stop) => {
-      if (!seen.has(stop.stop_id) && stop.stop_name.toLowerCase().includes(q)) {
-        seen.add(stop.stop_id);
-        results.push(stop);
+    // OPT-3: iterate the pre-built lowercase-keyed stopsByName index instead
+    // of calling .toLowerCase() on every individual stop object. Keys are
+    // already lowercased at parse time, so we avoid O(n) string allocations
+    // per keystroke and naturally group stops that share the same name.
+    for (const [name, stops] of d.stopsByName) {
+      if (!name.includes(q)) continue;
+      for (const stop of stops) {
+        if (!seen.has(stop.stop_id)) {
+          seen.add(stop.stop_id);
+          results.push(stop);
+        }
       }
-    });
+      if (results.length >= 20) break;
+    }
+    if (results.length >= 20) break;
   }
-  return results.slice(0, 20);
+  return results;
 }
 
 export function timeToMinutes(time: string): number {

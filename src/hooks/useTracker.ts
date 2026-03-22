@@ -40,8 +40,16 @@ export function useTracker(config: TrackerConfig): TrackerState {
   const [watchedStations, setWatchedStations] = useState<WatchedStation[]>([]);
   const watchedStationsRef = useRef<WatchedStation[]>([]);
   const [gtfsDatasets, setGtfsDatasets] = useState<GTFSData[]>([]);
-  const [vehiclePositions, setVehiclePositions] = useState<VehiclePosition[]>([]);
-  const [arrivalsMap, setArrivalsMap] = useState<Map<string, ArrivalEstimate[]>>(new Map());
+
+  // BUG-4: replaced vehiclePositions state with a ref so updating it after a
+  // realtime fetch does NOT trigger a second re-render / second ETA computation.
+  // All reads happen inside callbacks that already close over the ref, so no
+  // stale-value issues arise.
+  const vehiclePositionsRef = useRef<VehiclePosition[]>([]);
+
+  const [arrivalsMap, setArrivalsMap] = useState<
+    Map<string, ArrivalEstimate[]>
+  >(new Map());
   const [isStaticLoading, setIsStaticLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [staticError, setStaticError] = useState<string | null>(null);
@@ -60,7 +68,7 @@ export function useTracker(config: TrackerConfig): TrackerState {
       setStaticError(null);
       try {
         const results = await Promise.allSettled(
-          feeds.map((f) => loadGTFSStatic(f.agency, f.category))
+          feeds.map((f) => loadGTFSStatic(f.agency, f.category)),
         );
         if (cancelled) return;
         const datasets: GTFSData[] = [];
@@ -77,8 +85,10 @@ export function useTracker(config: TrackerConfig): TrackerState {
       }
     }
     load();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load watched stations from localStorage
@@ -86,64 +96,88 @@ export function useTracker(config: TrackerConfig): TrackerState {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) setWatchedStations(JSON.parse(saved));
-    } catch {}
+    } catch {
+      // BUG-5: corrupt JSON is silently ignored AND the bad entry is removed so
+      // it does not block every subsequent page load.
+      console.warn(
+        `[useTracker] Clearing corrupted localStorage entry for key: ${storageKey}`,
+      );
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        /* storage unavailable */
+      }
+    }
   }, [storageKey]);
 
-  // Persist to localStorage
+  // Persist watched stations to localStorage whenever they change
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(watchedStations));
-    } catch {}
+    } catch {
+      /* storage quota exceeded or unavailable */
+    }
   }, [watchedStations, storageKey]);
 
-  // Fetch realtime data and compute arrivals
+  // Single, canonical computation path for arrivals.
+  // Accepts the positions array explicitly so both the refresh path and the
+  // watched-stations-changed path call exactly the same logic without duplicating it.
+  const computeArrivals = useCallback((positions: VehiclePosition[]) => {
+    const activeVehicles = new Map<string, VehiclePosition>();
+    for (const vp of positions) {
+      if (vp.tripId) activeVehicles.set(vp.tripId, vp);
+    }
+    const map = new Map<string, ArrivalEstimate[]>();
+    for (const station of watchedStationsRef.current) {
+      map.set(
+        station.stop_id,
+        getArrivalsForStop(
+          station.stop_id,
+          datasetsRef.current,
+          activeVehicles,
+        ),
+      );
+    }
+    setArrivalsMap(map);
+  }, []);
+
+  // Fetch realtime vehicle positions and compute arrivals (single code path).
   const refresh = useCallback(async () => {
     if (datasetsRef.current.length === 0) return;
     setIsRefreshing(true);
     try {
       const positions = await fetchPositions();
-      setVehiclePositions(positions);
-      const stations = watchedStationsRef.current;
-      const activeVehicles = new Map<string, VehiclePosition>();
-      for (const vp of positions) {
-        if (vp.tripId) activeVehicles.set(vp.tripId, vp);
-      }
-      const map = new Map<string, ArrivalEstimate[]>();
-      for (const station of stations) {
-        map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, activeVehicles));
-      }
-      setArrivalsMap(map);
+      // Store in ref — does NOT trigger a re-render, preventing the duplicate
+      // ETA computation that the old vehiclePositions state caused.
+      vehiclePositionsRef.current = positions;
+      computeArrivals(positions);
     } catch (err) {
       console.error("Tracker refresh error:", err);
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchPositions]);
+  }, [fetchPositions, computeArrivals]);
 
-  // Initial refresh after static data loads
+  // Initial refresh once static data has finished loading
   useEffect(() => {
     if (!isStaticLoading && gtfsDatasets.length > 0) refresh();
   }, [isStaticLoading, gtfsDatasets, refresh]);
 
-  // SSE subscription — refresh immediately when server pushes a cache update
+  // SSE subscription — refresh immediately when the server publishes new data
   useEffect(() => {
-    const unsubscribe = subscribeToUpdates(sseGroup, () => { refresh(); });
+    const unsubscribe = subscribeToUpdates(sseGroup, () => {
+      refresh();
+    });
     return unsubscribe;
   }, [sseGroup, refresh]);
 
-  // Recompute arrivals when watched stations change
+  // Recompute arrivals when the watched-station list changes.
+  // Reads vehicle positions from the ref so no stale data is used.
   useEffect(() => {
-    if (datasetsRef.current.length === 0 || watchedStations.length === 0) return;
-    const activeVehicles = new Map<string, VehiclePosition>();
-    for (const vp of vehiclePositions) {
-      if (vp.tripId) activeVehicles.set(vp.tripId, vp);
-    }
-    const map = new Map<string, ArrivalEstimate[]>();
-    for (const station of watchedStations) {
-      map.set(station.stop_id, getArrivalsForStop(station.stop_id, datasetsRef.current, activeVehicles));
-    }
-    setArrivalsMap(map);
-  }, [watchedStations, vehiclePositions]);
+    if (datasetsRef.current.length === 0 || watchedStations.length === 0)
+      return;
+    computeArrivals(vehiclePositionsRef.current);
+  }, [watchedStations, computeArrivals]);
 
   const addStation = useCallback((station: WatchedStation) => {
     setWatchedStations((prev) => {

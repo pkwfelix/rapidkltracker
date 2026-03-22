@@ -9,129 +9,200 @@
   proper CSS custom properties with the rgb() wrapper so they work everywhere.
 */
 :root {
-  --c-bg:           rgb(var(--bg-white));
-  --c-bg-washed:    rgb(var(--bg-washed));
-  --c-bg-p50:       rgb(var(--bg-primary-50));
-  --c-bg-p100:      rgb(var(--bg-primary-100));
-  --c-bg-p600:      rgb(var(--bg-primary-600));
-  --c-bg-p700:      rgb(var(--bg-primary-700));
-  --c-bg-d50:       rgb(var(--bg-danger-50));
-  --c-bg-s50:       rgb(var(--bg-success-50));
-  --c-bg-s500:      rgb(var(--bg-success-500));
-  --c-bg-w50:       rgb(var(--bg-warning-50));
+    --c-bg: rgb(var(--bg-white));
+    --c-bg-washed: rgb(var(--bg-washed));
+    --c-bg-p50: rgb(var(--bg-primary-50));
+    --c-bg-p100: rgb(var(--bg-primary-100));
+    --c-bg-p600: rgb(var(--bg-primary-600));
+    --c-bg-p700: rgb(var(--bg-primary-700));
+    --c-bg-d50: rgb(var(--bg-danger-50));
+    --c-bg-s50: rgb(var(--bg-success-50));
+    --c-bg-s500: rgb(var(--bg-success-500));
+    --c-bg-w50: rgb(var(--bg-warning-50));
 
-  --c-txt-hi:       rgb(var(--txt-black-900));
-  --c-txt-mid:      rgb(var(--txt-black-700));
-  --c-txt-lo:       rgb(var(--txt-black-500));
-  --c-txt-white:    rgb(var(--txt-white));
-  --c-txt-primary:  rgb(var(--txt-primary));
-  --c-txt-danger:   rgb(var(--txt-danger));
-  --c-txt-success:  rgb(var(--txt-success));
-  --c-txt-warning:  rgb(var(--txt-warning));
+    --c-txt-hi: rgb(var(--txt-black-900));
+    --c-txt-mid: rgb(var(--txt-black-700));
+    --c-txt-lo: rgb(var(--txt-black-500));
+    --c-txt-white: rgb(var(--txt-white));
+    --c-txt-primary: rgb(var(--txt-primary));
+    --c-txt-danger: rgb(var(--txt-danger));
+    --c-txt-success: rgb(var(--txt-success));
+    --c-txt-warning: rgb(var(--txt-warning));
 
-  --c-border:       rgb(var(--otl-gray-200));
-  --c-divider:      rgb(var(--otl-divider));
-  --c-border-d:     rgb(var(--otl-danger-200));
-  --c-border-s:     rgb(var(--otl-success-200));
-  --c-border-w:     rgb(var(--otl-warning-200));
-  --c-border-p:     rgb(var(--otl-primary-200));
+    --c-border: rgb(var(--otl-gray-200));
+    --c-divider: rgb(var(--otl-divider));
+    --c-border-d: rgb(var(--otl-danger-200));
+    --c-border-s: rgb(var(--otl-success-200));
+    --c-border-w: rgb(var(--otl-warning-200));
+    --c-border-p: rgb(var(--otl-primary-200));
 }
 
 /* ── App base ── */
 body {
-  font-family: "Inter", sans-serif;
-  background-color: var(--c-bg-washed);
-  color: var(--c-txt-hi);
-  -webkit-font-smoothing: antialiased;
+    font-family: "Inter", sans-serif;
+    background-color: var(--c-bg-washed);
+    color: var(--c-txt-hi);
+    -webkit-font-smoothing: antialiased;
 }
 
 /* ── Utility classes ── */
-.bg-surface   { background-color: var(--c-bg); }
-.bg-muted     { background-color: var(--c-bg-washed); }
-.bg-p50       { background-color: var(--c-bg-p50); }
-.bg-p100      { background-color: var(--c-bg-p100); }
-.bg-p600      { background-color: var(--c-bg-p600); }
-.bg-d50       { background-color: var(--c-bg-d50); }
-.bg-s50       { background-color: var(--c-bg-s50); }
-.bg-s500      { background-color: var(--c-bg-s500); }
-.bg-w50       { background-color: var(--c-bg-w50); }
+.bg-surface {
+    background-color: var(--c-bg);
+}
+.bg-muted {
+    background-color: var(--c-bg-washed);
+}
+.bg-p50 {
+    background-color: var(--c-bg-p50);
+}
+.bg-p100 {
+    background-color: var(--c-bg-p100);
+}
+.bg-p600 {
+    background-color: var(--c-bg-p600);
+}
+.bg-d50 {
+    background-color: var(--c-bg-d50);
+}
+.bg-s50 {
+    background-color: var(--c-bg-s50);
+}
+.bg-s500 {
+    background-color: var(--c-bg-s500);
+}
+.bg-w50 {
+    background-color: var(--c-bg-w50);
+}
 
-.text-hi      { color: var(--c-txt-hi); }
-.text-mid     { color: var(--c-txt-mid); }
-.text-lo      { color: var(--c-txt-lo); }
-.text-white-t { color: var(--c-txt-white); }
-.text-p600    { color: var(--c-txt-primary); }
-.text-d600    { color: var(--c-txt-danger); }
-.text-s600    { color: var(--c-txt-success); }
-.text-w600    { color: var(--c-txt-warning); }
+.text-hi {
+    color: var(--c-txt-hi);
+}
+.text-mid {
+    color: var(--c-txt-mid);
+}
+.text-lo {
+    color: var(--c-txt-lo);
+}
+.text-white-t {
+    color: var(--c-txt-white);
+}
+.text-p600 {
+    color: var(--c-txt-primary);
+}
+.text-d600 {
+    color: var(--c-txt-danger);
+}
+.text-s600 {
+    color: var(--c-txt-success);
+}
+.text-w600 {
+    color: var(--c-txt-warning);
+}
 
 /* Card */
 .card {
-  background-color: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: 12px;
-  overflow: hidden;
+    background-color: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    overflow: hidden;
 }
 .card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--c-divider);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--c-divider);
 }
 .card-body {
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 /* Row divider */
-.row-divider { border-top: 1px solid var(--c-divider); }
+.row-divider {
+    border-top: 1px solid var(--c-divider);
+}
 
 /* Input */
 .input-base {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 0.875rem;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  background-color: var(--c-bg);
-  color: var(--c-txt-hi);
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    background-color: var(--c-bg);
+    color: var(--c-txt-hi);
+    transition:
+        border-color 0.15s,
+        box-shadow 0.15s;
+    outline: none;
 }
-.input-base::placeholder { color: var(--c-txt-lo); opacity: 0.8; }
+.input-base::placeholder {
+    color: var(--c-txt-lo);
+    opacity: 0.8;
+}
 .input-base:focus {
-  border-color: var(--c-bg-p600);
-  box-shadow: 0 0 0 3px var(--c-bg-p100);
+    border-color: var(--c-bg-p600);
+    box-shadow: 0 0 0 3px var(--c-bg-p100);
 }
-.input-base:disabled { opacity: 0.5; cursor: not-allowed; }
+.input-base:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 
 /* Button primary */
 .btn-primary {
-  padding: 8px 16px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background-color: var(--c-bg-p600);
-  color: var(--c-txt-white);
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.15s;
-  white-space: nowrap;
-  flex-shrink: 0;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background-color: var(--c-bg-p600);
+    color: var(--c-txt-white);
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
-.btn-primary:hover:not(:disabled) { background-color: var(--c-bg-p700); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--c-bg-p700);
+}
+.btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 /* Icon container */
 .icon-box {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Station card remove button */
+.station-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--c-txt-lo);
+    flex-shrink: 0;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+}
+.station-remove-btn:hover {
+    background: var(--c-bg-d50);
+    color: var(--c-txt-danger);
 }

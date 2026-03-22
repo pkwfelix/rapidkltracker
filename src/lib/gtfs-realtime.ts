@@ -1,33 +1,30 @@
-const _envBase = typeof import.meta !== "undefined"
-  ? (import.meta as any).env?.PUBLIC_SERVER_BASE
-  : undefined;
+const _envBase =
+  typeof import.meta !== "undefined"
+    ? (import.meta as any).env?.PUBLIC_SERVER_BASE
+    : undefined;
 if (!_envBase) {
   console.warn(
     "[gtfs-realtime] PUBLIC_SERVER_BASE is not set. " +
-    "Falling back to http://localhost:3001. " +
-    "Set this variable for production deployments."
+      "Falling back to http://localhost:3001. " +
+      "Set this variable for production deployments.",
   );
 }
 const SERVER_BASE: string = _envBase ?? "http://localhost:3001";
 
-export interface VehiclePosition {
-  vehicleId: string;
-  tripId: string;
-  routeId: string;
-  latitude: number;
-  longitude: number;
-  currentStopSequence?: number;
-  currentStopId?: string;
-  timestamp?: number;
-  agency: string;
-}
+// Imported for local use within this file, then re-exported so consumers can
+// continue to import VehiclePosition from here without any changes — the
+// canonical definition now lives in shared/types.ts (REF-1).
+import type { VehiclePosition } from "../../shared/types";
+export type { VehiclePosition };
 
 interface ServerResponse {
   updatedAt: number;
   positions: VehiclePosition[];
 }
 
-async function fetchFromServer(group: "bus" | "train"): Promise<VehiclePosition[]> {
+async function fetchFromServer(
+  group: "bus" | "train",
+): Promise<VehiclePosition[]> {
   const res = await fetch(`${SERVER_BASE}/api/vehicles/${group}`, {
     signal: AbortSignal.timeout(10_000),
   });
@@ -52,7 +49,7 @@ export async function fetchAllTrainPositions(): Promise<VehiclePosition[]> {
  */
 export function subscribeToUpdates(
   group: "bus" | "train",
-  onUpdate: () => void
+  onUpdate: () => void,
 ): () => void {
   if (typeof EventSource === "undefined") return () => {};
 

@@ -11,8 +11,13 @@ router.use(
   rateLimit({
     windowMs: 60_000,
     max: 60,
+    standardHeaders: true, // Return RateLimit-* headers so clients can back off gracefully
+    legacyHeaders: false, // Disable deprecated X-RateLimit-* headers
     message: { error: "Too many requests" },
-  })
+    // SSE connections are long-lived; excluding them prevents reconnects from
+    // burning through the rate budget and locking out the data stream.
+    skip: (req) => req.path.startsWith("/events/"),
+  }),
 );
 
 router.get("/vehicles/:group", async (req: Request, res: Response) => {
@@ -46,7 +51,19 @@ router.get("/events/:group", (req: Request, res: Response) => {
   res.write(`data: ${JSON.stringify({ connected: true })}\n\n`);
   sseClients[group].add(res);
 
+  // Heartbeat every 15 s: keeps the TCP connection alive through NAT/proxy
+  // timeouts and lets us detect dead clients before the next 30 s data push.
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": keep-alive\n\n");
+    } catch {
+      clearInterval(heartbeat);
+      sseClients[group].delete(res);
+    }
+  }, 15_000);
+
   req.on("close", () => {
+    clearInterval(heartbeat);
     sseClients[group].delete(res);
   });
 });
@@ -56,7 +73,10 @@ router.get("/health", async (_req: Request, res: Response) => {
   for (const group of ["bus", "train"] as Group[]) {
     const payload = await readCache(group);
     if (payload) {
-      status[group] = { updatedAt: payload.updatedAt, ageSeconds: Math.round((Date.now() - payload.updatedAt) / 1000) };
+      status[group] = {
+        updatedAt: payload.updatedAt,
+        ageSeconds: Math.round((Date.now() - payload.updatedAt) / 1000),
+      };
     } else {
       status[group] = null;
     }

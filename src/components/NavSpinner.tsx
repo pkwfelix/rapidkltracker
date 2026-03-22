@@ -4,7 +4,6 @@ import { REFRESH_INTERVAL_SECONDS } from "../lib/config";
 export default function NavSpinner() {
   const [refreshing, setRefreshing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const [totalSeconds] = useState(REFRESH_INTERVAL_SECONDS);
 
   useEffect(() => {
     const onTick = (e: Event) => {
@@ -17,7 +16,10 @@ export default function NavSpinner() {
   }, []);
 
   // Calculate progress for the circular ring
-  const progress = secondsLeft !== null ? (REFRESH_INTERVAL_SECONDS - secondsLeft) / REFRESH_INTERVAL_SECONDS : 0;
+  const progress =
+    secondsLeft !== null
+      ? (REFRESH_INTERVAL_SECONDS - secondsLeft) / REFRESH_INTERVAL_SECONDS
+      : 0;
   const circumference = 2 * Math.PI * 5.5; // radius = 5.5
   const strokeDasharray = circumference;
   const strokeDashoffset = circumference * (1 - progress);
@@ -25,7 +27,13 @@ export default function NavSpinner() {
   return (
     <div className="flex items-center gap-1.5">
       {secondsLeft !== null && (
-        <span style={{ fontSize: "0.75rem", color: "var(--c-txt-lo)", fontVariantNumeric: "tabular-nums" }}>
+        <span
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--c-txt-lo)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
           {refreshing ? "Refreshing…" : `${secondsLeft}s`}
         </span>
       )}
