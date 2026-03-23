@@ -6,8 +6,8 @@ Real-time bus and train arrival tracker for RapidKL services in Malaysia, built 
 
 RapidTracker consists of two parts running in parallel:
 
-- **Node server** (`server/`) — polls the GTFS Realtime API every 30 seconds, decodes protobuf, and caches vehicle positions as JSON
-- **Astro frontend** (`src/`) — fetches the cached JSON from the local server, cross-references it against GTFS Static schedule data, and computes per-stop ETA estimates in the browser
+- **Node server** (`server/`) — polls the GTFS Realtime API every 30 seconds, decodes protobuf, caches vehicle positions as JSON, and pushes update events to the browser over SSE
+- **Astro frontend** (`src/`) — subscribes to SSE for instant updates, cross-references vehicle positions against GTFS Static schedule data, and computes per-stop ETA estimates in the browser
 
 ## Tech Stack
 
@@ -18,7 +18,9 @@ RapidTracker consists of two parts running in parallel:
 | Backend server | [Express 5](https://expressjs.com) (Node.js ESM) |
 | GTFS Realtime decode | [protobufjs](https://protobufjs.github.io/protobuf.js/) |
 | GTFS Static parse | [JSZip](https://stuk.github.io/jszip/) (ZIP download + CSV parse in-browser) |
+| Client-side cache | [idb](https://github.com/jakearchibald/idb) (IndexedDB wrapper) |
 | Dev tooling | [concurrently](https://github.com/open-cli-tools/concurrently) |
+| Testing | [Vitest](https://vitest.dev) + [Testing Library](https://testing-library.com) |
 
 ## Prerequisites
 
@@ -46,6 +48,16 @@ This starts:
 | `npm run server` | Start the Node server only |
 | `npm run build` | Build the Astro frontend to `./dist/` |
 | `npm run preview` | Preview the production build locally |
+| `npm test` | Run the Vitest unit test suite |
+
+## Environment Variables
+
+| Variable | Where | Default | Description |
+| :------- | :---- | :------ | :---------- |
+| `ALLOWED_ORIGIN` | server | `http://localhost:4321` | Allowed CORS origin. Set to your frontend URL in production. |
+| `PUBLIC_SERVER_BASE` | client (Astro) | `http://localhost:3001` | Base URL the browser uses to reach the Node server. Prefix with `PUBLIC_` so Astro exposes it to client-side code. |
+
+Copy `.env.example` to `.env` and fill in both variables before deploying to production.
 
 ## Project Structure
 
@@ -53,33 +65,53 @@ This starts:
 /
 ├── public/
 │   ├── favicon.ico
-│   ├── favicon.svg
-│   └── gtfs-realtime.proto        # Protobuf schema (served statically, unused by browser)
+│   └── favicon.svg
+│
+├── shared/
+│   └── types.ts                   # Shared TypeScript types (VehiclePosition) used by
+│                                  # both server and client to avoid duplication
 │
 ├── server/
-│   ├── index.js                   # Express server — polls GTFS-RT, writes cache
+│   ├── index.ts                   # Express entry-point — wires CORS, rate-limit, routes
+│   ├── poller.ts                  # Polls GTFS-RT feeds, decodes protobuf, writes cache,
+│   │                              # broadcasts SSE events to connected clients
+│   ├── cache.ts                   # Atomic JSON file cache (write to .tmp then rename)
+│   ├── routes.ts                  # REST + SSE route handlers with rate limiting
+│   ├── config.ts                  # Server constants + env var reading
+│   ├── types.ts                   # Server-side types (re-exports from shared/)
+│   ├── gtfs-realtime.proto        # Protobuf schema
 │   └── cache/                     # Ephemeral JSON cache (gitignored)
 │       ├── bus.json
 │       └── train.json
 │
+├── vitest.config.ts               # Vitest config — jsdom environment, setup files
+│
 └── src/
     ├── components/
-    │   ├── BusTracker.tsx          # Bus stop tracker island
-    │   ├── TrainTracker.tsx        # Train station tracker island
+    │   ├── TrackerPanel.tsx        # Bus or train tracker island (variant prop)
     │   ├── StationInput.tsx        # Autocomplete stop search input
     │   ├── StationCard.tsx         # Per-stop arrivals card
     │   ├── RefreshSpinner.tsx      # Countdown timer — emits DOM events, renders nothing
     │   └── NavSpinner.tsx          # Header spinner — listens to DOM events, renders ring
+    ├── hooks/
+    │   └── useTracker.ts           # Core tracker state hook — GTFS loading, SSE
+    │                               # subscription, ETA computation
     ├── lib/
-    │   ├── gtfs-static.ts          # Fetches + parses GTFS Static ZIP (stops, trips, routes, schedules)
-    │   ├── gtfs-realtime.ts        # Fetches vehicle positions from local server
-    │   └── eta.ts                  # Cross-references schedule + realtime to compute ETAs
+    │   ├── gtfs-static.ts          # Fetches + parses GTFS Static ZIP; two-level cache
+    │   │                           # (in-memory L1 + IndexedDB L2 with 6 h TTL)
+    │   ├── gtfs-realtime.ts        # Fetches vehicle positions; SSE subscription helper
+    │   ├── eta.ts                  # Cross-references schedule + realtime to compute ETAs
+    │   └── config.ts               # Client-side constants
+    ├── lib/__tests__/
+    │   ├── exploration.test.ts     # Tests that verify bug fixes are applied
+    │   ├── preservation.test.ts    # Tests that verify correct behaviour is unchanged
+    │   └── setup.ts                # Vitest + Testing Library bootstrap
     ├── pages/
     │   └── index.astro             # Main page layout
     ├── styles/
     │   └── global.css              # MYDS CSS variable wrappers + component utility classes
     └── types/
-        └── index.ts                # Shared TypeScript interfaces
+        └── index.ts                # Frontend-only TypeScript interfaces (WatchedStation)
 ```
 
 ## Architecture
@@ -89,22 +121,35 @@ This starts:
 ```
 api.data.gov.my (GTFS-RT protobuf)
         │
-        ▼  every 30s
-  server/index.js
-  (decode protobuf → JSON)
+        ▼  every 30 s (setInterval)
+  server/poller.ts
+  (fetch → decode protobuf → filter by Malaysia bbox)
         │
-        ▼  writes
-  server/cache/{bus,train}.json
+        ├─► writes atomically ──► server/cache/{bus,train}.json
+        │                         (.tmp file + fs.rename for crash safety)
         │
-        ▼  GET /api/vehicles/{bus,train}
-  Browser (React islands)
-  (fetch JSON + parse GTFS Static ZIP)
-        │
-        ▼
-  eta.ts → per-stop arrival estimates
-        │
-        ▼
-  StationCard (rendered ETAs)
+        └─► SSE broadcast ──────► browser EventSource (instant push)
+                                          │
+                  ┌───────────────────────┘
+                  │  on SSE message OR 10 s fallback interval
+                  ▼
+         src/hooks/useTracker.ts
+         (fetchPositions → computeArrivals)
+                  │
+                  ├─► in-memory cache (L1)
+                  ├─► IndexedDB cache  (L2, 6 h TTL)
+                  └─► network fetch    (L3, on cache miss)
+                  │
+                  ▼  GTFS Static ZIP
+         src/lib/gtfs-static.ts
+         (stops, trips, routes, stop_times, frequencies)
+                  │
+                  ▼
+         src/lib/eta.ts
+         (schedule × realtime → per-stop ArrivalEstimate[])
+                  │
+                  ▼
+         StationCard (rendered ETAs)
 ```
 
 ### Server API
@@ -113,9 +158,14 @@ api.data.gov.my (GTFS-RT protobuf)
 | :------- | :---------- |
 | `GET /api/vehicles/bus` | Cached bus vehicle positions (rapid-bus-kl + rapid-bus-mrtfeeder) |
 | `GET /api/vehicles/train` | Cached train vehicle positions (KTMB) |
+| `GET /api/events/bus` | SSE stream — emits `{ updatedAt }` whenever the bus cache is refreshed |
+| `GET /api/events/train` | SSE stream — emits `{ updatedAt }` whenever the train cache is refreshed |
 | `GET /api/health` | Cache age status for both groups |
 
-Response shape:
+All endpoints under `/api` are rate-limited to **60 requests per minute** per IP. SSE endpoints (`/api/events/*`) are exempt from the rate limit so reconnects cannot lock out the data stream. Each SSE connection receives a comment-only heartbeat frame every 15 seconds to keep the TCP connection alive through NAT/proxy timeouts and detect dead clients early.
+
+Vehicle response shape:
+
 ```json
 {
   "updatedAt": 1234567890000,
@@ -134,6 +184,18 @@ Response shape:
   ]
 }
 ```
+
+### GTFS Static Cache Layers
+
+GTFS Static ZIPs can be several megabytes and are slow to re-parse. The client uses a two-level cache:
+
+| Layer | Storage | TTL | Notes |
+| :---- | :------ | :-- | :---- |
+| L1 — memory | JS `Map` | Page lifecycle | Instant; survives hot-reloads in dev |
+| L2 — IndexedDB | Browser IDB | 6 hours | Survives page reloads; stale entries are pruned once per session |
+| L3 — network | `api.data.gov.my` | — | Only reached on cold load or after TTL expiry |
+
+Stop selections are persisted to `localStorage`. Corrupt entries are automatically cleared and re-initialised on the next load.
 
 ### Spinner Architecture
 
@@ -157,6 +219,16 @@ MYDS CSS variables store space-separated RGB channels (e.g. `--bg-white: 255 255
 
 All components use only `--c-*` variables, never raw MYDS tokens.
 
+### Server Hardening
+
+| Concern | Implementation |
+| :------ | :------------- |
+| CORS | Restricted to `ALLOWED_ORIGIN` (env var); defaults to `http://localhost:4321` |
+| Rate limiting | 60 req/min per IP via `express-rate-limit`; SSE routes exempted |
+| SSE connection leak | 15 s heartbeat per connection; dead clients removed immediately on write error |
+| Cache file corruption | Atomic write — JSON serialised to `.tmp`, then `fs.rename` to target |
+| Bogus GPS data | Vehicles outside Malaysia's bounding box (lat 0.85–7.4 °N, lon 99.6–119.3 °E) are discarded at poll time |
+
 ## GTFS Data Sources
 
 | Feed | Provider | Type |
@@ -166,13 +238,21 @@ All components use only `--c-*` variables, never raw MYDS tokens.
 | `rapid-rail-kl` | Prasarana | Static only (no RT feed) |
 | `ktmb` | KTMB | Static + Realtime |
 
-GTFS Static ZIPs are fetched directly in the browser from `api.data.gov.my` on first load and cached in memory for the session. Stop selections are persisted to `localStorage`.
+## Testing
+
+```sh
+npm test
+```
+
+Vitest runs in `jsdom` mode. Two test suites are included:
+
+- **`exploration.test.ts`** — regression tests that verify each bug fix is correctly applied (overnight ETA, NavSpinner progress, RefreshSpinner Strict Mode, localStorage isolation, calendar exception types)
+- **`preservation.test.ts`** — baseline tests that verify correct existing behaviour is unchanged across all fixes
 
 ## Known Limitations
 
 - `rapid-rail-kl` (LRT/MRT/Monorail) has no GTFS Realtime vehicle position feed — arrivals are schedule-based only
-- GTFS Static data is re-fetched on every page reload (no persistent cache beyond `localStorage` stop list)
-- `SERVER_BASE` is hardcoded to `http://localhost:3001` — needs an environment variable for production deployment
+- The client reads `PUBLIC_SERVER_BASE` for the server URL; set this env var before building for production (see [Environment Variables](#environment-variables))
 
 ## License
 
