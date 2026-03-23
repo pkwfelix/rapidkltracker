@@ -2,6 +2,14 @@
 
 Real-time bus and train arrival tracker for RapidKL services in Malaysia, built on top of the [Malaysia Open Data](https://data.gov.my) GTFS feeds.
 
+## Vibecode Disclaimer
+
+This project is an experiment of multiple AI IDE on the market with their respective models.
+
+- Windsurf (Claude Sonnet 4.6)
+- Kiro (Auto)
+- Zed (Claude Sonnet 4.6)
+
 ## Overview
 
 RapidTracker consists of two parts running in parallel:
